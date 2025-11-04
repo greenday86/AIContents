@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LEGO F1 챔피언스</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <main class="layout">
+        <section class="sidebar">
+            <h1 class="logo">LEGO F1 챔피언스</h1>
+            <div class="race-info">
+                <h2>레이스 정보</h2>
+                <p>업데이트된 포지션과 속도를 확인하세요.</p>
+                <ul id="positionList" class="position-list"></ul>
+            </div>
+            <div class="controls">
+                <h2>조작 방법</h2>
+                <ul>
+                    <li><strong>↑</strong> 가속</li>
+                    <li><strong>↓</strong> 감속</li>
+                    <li><strong>← / →</strong> 좌우 이동</li>
+                    <li><strong>R</strong> 레이스 리셋</li>
+                </ul>
+            </div>
+            <div class="hud">
+                <h2>계기판</h2>
+                <div class="hud-item">속도: <span id="speedDisplay">0</span> km/h</div>
+                <div class="hud-item">라운드: <span id="lapDisplay">1 / 1</span></div>
+                <div class="hud-item">포지션: <span id="rankDisplay">1</span> 위</div>
+            </div>
+        </section>
+        <section class="stage">
+            <canvas id="raceCanvas" width="800" height="600"></canvas>
+            <div id="finishBanner" class="finish-banner hidden">
+                <h2>체커플래그!</h2>
+                <p id="finishSummary"></p>
+                <button id="restartBtn" class="btn">다시 달리기</button>
+            </div>
+        </section>
+    </main>
+
+    <footer class="credits">
+        LEGO 스타일의 F1 그랑프리를 직접 체험해보세요!
+    </footer>
+
+    <script src="game.js"></script>
+</body>
+</html>
