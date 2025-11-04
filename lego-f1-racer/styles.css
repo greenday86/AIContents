@@ -1,0 +1,343 @@
+:root {
+  --lego-red: #e11d48;
+  --lego-yellow: #fbbf24;
+  --lego-blue: #1d4ed8;
+  --lego-green: #16a34a;
+  --dark: #0f172a;
+  --light: #f8fafc;
+  --track: #364152;
+  --track-line: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', 'Pretendard', sans-serif;
+  background: radial-gradient(circle at top left, #1f2937 0%, #0f172a 45%, #020617 100%);
+  color: var(--light);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.12) 18%, transparent 22%),
+    radial-gradient(rgba(30, 58, 138, 0.18) 12%, transparent 18%);
+  background-size: 48px 48px, 64px 64px;
+  mix-blend-mode: screen;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.layout {
+  flex: 1;
+  display: flex;
+  max-width: 1200px;
+  margin: 2rem auto;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.78));
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 24px 60px rgba(8, 16, 28, 0.55);
+  position: relative;
+}
+
+.layout::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  pointer-events: none;
+}
+
+.sidebar {
+  width: 320px;
+  padding: 2rem 1.5rem;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.95), rgba(17, 24, 39, 0.78));
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.logo {
+  font-size: 1.8rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--lego-yellow);
+  text-shadow: 0 5px 20px rgba(251, 191, 36, 0.45);
+  position: relative;
+}
+
+.logo::after {
+  content: '브릭 서킷 2024';
+  display: inline-block;
+  font-size: 0.7rem;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.6);
+  margin-left: 0.4rem;
+}
+
+.race-info h2,
+.controls h2,
+.hud h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.6rem;
+  color: var(--lego-blue);
+  text-transform: uppercase;
+}
+
+.position-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-left: 0.25rem;
+}
+
+.position-list li {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(59, 130, 246, 0.08));
+  border-radius: 14px;
+  padding: 0.75rem 0.9rem;
+  font-weight: 600;
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.18);
+}
+
+.position-list li.player-entry {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.35), rgba(234, 179, 8, 0.15));
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25);
+}
+
+.position-list li.player-entry .pos-chip {
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.45);
+}
+
+.position-list .pos-rank {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--light);
+  text-align: center;
+}
+
+.position-list .pos-driver {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.position-list .pos-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.55);
+}
+
+.position-list .pos-name {
+  letter-spacing: 0.3px;
+}
+
+.controls ul {
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.controls li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(30, 41, 59, 0.6);
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(100, 116, 139, 0.18);
+}
+
+.controls li strong {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  background: rgba(248, 250, 252, 0.1);
+  border-radius: 6px;
+}
+
+.hud {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.hud-item {
+  padding: 0.8rem 1rem;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.28), rgba(16, 185, 129, 0.12));
+  border-radius: 12px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid rgba(134, 239, 172, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.18);
+}
+
+.hud-item span.label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.hud-item span.value {
+  font-size: 1.1rem;
+  color: #ecfccb;
+}
+
+.hud-item span.value small {
+  font-size: 0.7rem;
+  margin-left: 0.35rem;
+  color: rgba(226, 232, 240, 0.6);
+}
+
+.stage {
+  flex: 1;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(circle at top, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.92));
+}
+
+#raceCanvas {
+  border-radius: 20px;
+  border: 14px solid rgba(15, 23, 42, 0.92);
+  background: var(--track);
+  box-shadow: inset 0 0 40px rgba(15, 23, 42, 0.7), 0 20px 50px rgba(2, 6, 23, 0.55);
+}
+
+.finish-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.88));
+  padding: 2rem 3rem;
+  border-radius: 18px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.6);
+  animation: float 3s ease-in-out infinite;
+}
+
+.finish-banner h2 {
+  font-size: 2rem;
+  color: var(--lego-yellow);
+  margin-bottom: 1rem;
+}
+
+.finish-banner p {
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.finish-banner .finish-title {
+  display: block;
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+  letter-spacing: 2px;
+  color: rgba(248, 250, 252, 0.8);
+}
+
+.finish-banner .finish-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 0.45rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.finish-banner .finish-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.65);
+}
+
+.finish-banner.hidden {
+  display: none;
+}
+
+.btn {
+  background: linear-gradient(135deg, var(--lego-red), #fb7185);
+  color: var(--light);
+  border: none;
+  border-radius: 10px;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(225, 29, 72, 0.5);
+}
+
+.credits {
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.65);
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translate(-50%, -52%);
+  }
+  50% {
+    transform: translate(-50%, -48%);
+  }
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .sidebar > * {
+    flex: 1 1 200px;
+  }
+
+  .stage {
+    padding: 1rem;
+  }
+
+  #raceCanvas {
+    width: 100%;
+    height: auto;
+  }
+}
