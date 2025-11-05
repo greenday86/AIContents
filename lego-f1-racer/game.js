@@ -146,7 +146,11 @@ function update(dt) {
       d.finished = true;
       d.finishTime = performance.now() - raceState.startTime;
       raceState.finishOrder.push(d);
-      if (d.isPlayer) { raceState.finished = true; showFinishBanner(); }
+      if (d.isPlayer) {
+        raceState.finished = true;
+        finalizeFinishOrder();
+        showFinishBanner();
+      }
     }
   });
 
@@ -313,6 +317,20 @@ function showFinishBanner() {
     .map((d, i) => `<span class="finish-line"><span class="finish-chip" style="background:${d.design.base}"></span>${i + 1}위 ${d.name} (#${d.design.number})</span>`)
     .join('');
   finishSummary.innerHTML = `<strong class="finish-title">완주 순위</strong>${ordered}`;
+}
+
+function finalizeFinishOrder() {
+  const finishedSet = new Set(raceState.finishOrder.map((d) => d.id));
+  const remaining = players.filter((d) => !finishedSet.has(d.id));
+
+  remaining.sort((a, b) => {
+    const aFinished = a.finished ? a.finishTime ?? Infinity : Infinity;
+    const bFinished = b.finished ? b.finishTime ?? Infinity : Infinity;
+    if (aFinished !== bFinished) return aFinished - bFinished;
+    return b.progress - a.progress;
+  });
+
+  raceState.finishOrder = [...raceState.finishOrder, ...remaining];
 }
 
 // --- 루프 ---
