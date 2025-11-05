@@ -125,10 +125,6 @@ body::before {
   box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25);
 }
 
-.position-list li.player-entry .pos-chip {
-  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.45);
-}
-
 .position-list .pos-rank {
   font-size: 1.2rem;
   font-weight: 700;
@@ -149,10 +145,6 @@ body::before {
   height: 18px;
   border-radius: 6px;
   box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.55);
-}
-
-.position-list .pos-name {
-  letter-spacing: 0.3px;
 }
 
 .controls ul {
@@ -253,31 +245,6 @@ body::before {
   line-height: 1.5;
 }
 
-.finish-banner .finish-title {
-  display: block;
-  margin-bottom: 0.6rem;
-  font-size: 1rem;
-  letter-spacing: 2px;
-  color: rgba(248, 250, 252, 0.8);
-}
-
-.finish-banner .finish-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  margin-top: 0.45rem;
-  font-weight: 600;
-  color: rgba(226, 232, 240, 0.92);
-}
-
-.finish-banner .finish-chip {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.65);
-}
-
 .finish-banner.hidden {
   display: none;
 }
@@ -303,7 +270,7 @@ body::before {
   text-align: center;
   padding: 1rem;
   font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.65);
+  color: rgba(226, 232, 240, 0.7);
 }
 
 @keyframes float {
