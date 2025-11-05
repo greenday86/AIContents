@@ -6,6 +6,9 @@ const CAR_LENGTH = 90;
 const CAR_WIDTH = 60;
 const VIEW_DISTANCE = 1200; // 화면 표시 거리
 const BASE_FRICTION = 40;
+const COUNTDOWN_DURATION = 3;
+const ROAD_SHOULDER = 110;
+const TRACK_SLICE_STEP = 45;
 
 let canvas;
 let ctx;
@@ -16,6 +19,7 @@ let positionList;
 let finishBanner;
 let finishSummary;
 let restartBtn;
+let countdownDisplay;
 let TRACK_LEFT = 0;
 
 const inputState = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
@@ -73,7 +77,20 @@ const aiDrivers = [
 ];
 
 const players = [];
-let raceState = { finished: false, finishOrder: [], startTime: null, lastTimestamp: 0 };
+
+function createInitialRaceState() {
+  return {
+    finished: false,
+    finishOrder: [],
+    startTime: null,
+    lastTimestamp: 0,
+    countdownActive: true,
+    countdown: COUNTDOWN_DURATION,
+    goSignalTime: 0,
+  };
+}
+
+let raceState = createInitialRaceState();
 
 const trackSegments = [
   { start: 0, end: 0.12, from: 0, to: -140 },
@@ -166,6 +183,7 @@ function ensureElements() {
   finishBanner = document.getElementById('finishBanner');
   finishSummary = document.getElementById('finishSummary');
   restartBtn = document.getElementById('restartBtn');
+  countdownDisplay = document.getElementById('countdownDisplay');
 
   if (!canvas) {
     console.error('raceCanvas 요소를 찾을 수 없습니다. HTML 구조를 확인하세요.');
@@ -186,6 +204,10 @@ function ensureElements() {
 
   if (!restartBtn) {
     console.warn('restartBtn 요소를 찾을 수 없습니다. 다시 달리기 버튼이 비활성화됩니다.');
+  }
+
+  if (!countdownDisplay) {
+    console.warn('countdownDisplay 요소를 찾을 수 없습니다. 카운트다운 연출이 비활성화됩니다.');
   }
 
   return true;
@@ -223,9 +245,42 @@ function resetRace() {
     driver.targetLane = driver.lane;
     driver.x = laneToX(driver.lane);
   });
-  raceState = { finished: false, finishOrder: [], startTime: performance.now(), lastTimestamp: 0 };
+  raceState = createInitialRaceState();
   finishBanner.classList.add('hidden');
   finishSummary.textContent = '';
+  if (countdownDisplay) {
+    countdownDisplay.textContent = COUNTDOWN_DURATION.toString();
+    countdownDisplay.classList.remove('hidden', 'go');
+  }
+  updateUI();
+}
+
+function handleCountdown(dt) {
+  if (raceState.countdownActive) {
+    raceState.countdown = Math.max(0, raceState.countdown - dt);
+    if (countdownDisplay) {
+      countdownDisplay.textContent = Math.max(1, Math.ceil(raceState.countdown)).toString();
+      countdownDisplay.classList.remove('hidden', 'go');
+    }
+
+    if (raceState.countdown <= 0) {
+      raceState.countdownActive = false;
+      raceState.goSignalTime = 0.8;
+      raceState.countdown = 0;
+      raceState.startTime = performance.now();
+      if (countdownDisplay) {
+        countdownDisplay.textContent = 'GO!';
+        countdownDisplay.classList.add('go');
+      }
+    }
+  } else if (raceState.goSignalTime > 0) {
+    raceState.goSignalTime = Math.max(0, raceState.goSignalTime - dt);
+    if (raceState.goSignalTime <= 0 && countdownDisplay) {
+      countdownDisplay.classList.add('hidden');
+    }
+  }
+
+  return raceState.countdownActive;
 }
 
 function handleInputFrame(player, dt) {
@@ -278,6 +333,8 @@ function checkCollision(player, opponent) {
 }
 
 function update(dt) {
+  if (handleCountdown(dt)) return;
+
   if (!raceState.startTime) raceState.startTime = performance.now();
   if (raceState.finished) return;
 
@@ -326,30 +383,124 @@ function drawTrack() {
     ctx.fillRect(index * (canvas.width / bannerColors.length), standHeight - 10, canvas.width / bannerColors.length - 8, 6);
   });
 
+  const groundGrad = ctx.createLinearGradient(0, canvas.height * 0.35, 0, canvas.height);
+  groundGrad.addColorStop(0, '#0b1220');
+  groundGrad.addColorStop(1, '#020617');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, standHeight, canvas.width, canvas.height - standHeight * 2);
+
   ctx.restore();
+
+  const player = players[0];
+  if (!player) return;
+
+  const baseOffset = getTrackOffset(player.progress);
+  const roadWidth = LANE_COUNT * LANE_WIDTH;
+  const horizon = standHeight + 30;
+  let prevSlice = null;
+
+  for (let distance = VIEW_DISTANCE; distance >= 0; distance -= TRACK_SLICE_STEP) {
+    const progress = player.progress + distance;
+    const offsetDiff = getTrackOffset(progress) - baseOffset;
+    const perspective = 1 / (1 + distance * 0.0026);
+    const centerX = TRACK_LEFT + roadWidth / 2 + offsetDiff * perspective;
+    const y = canvas.height - distance * 0.42 - 140;
+
+    if (y < horizon) continue;
+
+    const asphaltHalf = (roadWidth / 2) * perspective;
+    const shoulderHalf = asphaltHalf + ROAD_SHOULDER * perspective;
+
+    const slice = {
+      centerX,
+      y,
+      perspective,
+      asphaltHalf,
+      shoulderHalf,
+    };
+
+    if (prevSlice) {
+      drawTrackSection(prevSlice, slice);
+      drawLaneMarkers(prevSlice, slice, roadWidth);
+    }
+
+    prevSlice = slice;
+  }
+}
+
+function drawTrackSection(prevSlice, slice) {
+  const asphaltColor = '#1f2937';
+  const shoulderColor = '#334155';
+
+  ctx.beginPath();
+  ctx.moveTo(prevSlice.centerX - prevSlice.shoulderHalf, prevSlice.y);
+  ctx.lineTo(prevSlice.centerX + prevSlice.shoulderHalf, prevSlice.y);
+  ctx.lineTo(slice.centerX + slice.shoulderHalf, slice.y);
+  ctx.lineTo(slice.centerX - slice.shoulderHalf, slice.y);
+  ctx.closePath();
+  ctx.fillStyle = shoulderColor;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(prevSlice.centerX - prevSlice.asphaltHalf, prevSlice.y);
+  ctx.lineTo(prevSlice.centerX + prevSlice.asphaltHalf, prevSlice.y);
+  ctx.lineTo(slice.centerX + slice.asphaltHalf, slice.y);
+  ctx.lineTo(slice.centerX - slice.asphaltHalf, slice.y);
+  ctx.closePath();
+  ctx.fillStyle = asphaltColor;
+  ctx.fill();
+}
+
+function drawLaneMarkers(prevSlice, slice, roadWidth) {
+  ctx.strokeStyle = 'rgba(248,250,252,0.5)';
+  for (let lane = 1; lane < LANE_COUNT; lane += 1) {
+    const laneOffset = lane * (roadWidth / LANE_COUNT) - roadWidth / 2;
+    const prevX = prevSlice.centerX + laneOffset * prevSlice.perspective;
+    const currX = slice.centerX + laneOffset * slice.perspective;
+    ctx.lineWidth = Math.max(1, 3 * slice.perspective);
+    ctx.beginPath();
+    ctx.moveTo(prevX, prevSlice.y);
+    ctx.lineTo(currX, slice.y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(248,113,113,0.7)';
+  ctx.lineWidth = Math.max(2, 4 * slice.perspective);
+  ctx.beginPath();
+  ctx.moveTo(prevSlice.centerX - prevSlice.asphaltHalf, prevSlice.y);
+  ctx.lineTo(slice.centerX - slice.asphaltHalf, slice.y);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(74,222,128,0.7)';
+  ctx.beginPath();
+  ctx.moveTo(prevSlice.centerX + prevSlice.asphaltHalf, prevSlice.y);
+  ctx.lineTo(slice.centerX + slice.asphaltHalf, slice.y);
+  ctx.stroke();
 }
 
 function drawCars() {
   const player = players[0];
+  const baseOffset = getTrackOffset(player.progress);
   players.forEach((driver) => {
     const relativeProgress = driver.progress - player.progress;
     if (relativeProgress < -200 || relativeProgress > VIEW_DISTANCE) return;
     const y = canvas.height - relativeProgress * 0.4 - 160;
     const scale = Math.max(0.3, 1 - relativeProgress / VIEW_DISTANCE);
-    drawCar(driver, y, scale);
+    const curveShift = (getTrackOffset(driver.progress) - baseOffset) * scale * 0.9;
+    drawCar(driver, y, scale, curveShift);
   });
 }
 
-function drawCar(driver, y, scale = 1) {
+function drawCar(driver, y, scale = 1, curveShift = 0) {
   const { base, accent, stripe, wing, studs, halo, number } = driver.design;
   const carW = CAR_WIDTH * scale;
   const carL = CAR_LENGTH * scale;
-  const x = driver.x - carW / 2;
+  const x = driver.x + curveShift - carW / 2;
 
   ctx.save();
   ctx.fillStyle = 'rgba(8,15,26,0.45)';
   ctx.beginPath();
-  ctx.ellipse(driver.x, y + carL * 0.94, carW * 0.46, carL * 0.18, 0, 0, Math.PI * 2);
+  ctx.ellipse(driver.x + curveShift, y + carL * 0.94, carW * 0.46, carL * 0.18, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = wing;
@@ -380,7 +531,7 @@ function drawCar(driver, y, scale = 1) {
   ctx.fillStyle = '#f8fafc';
   ctx.font = `${Math.max(8, 12 * scale)}px 'Pretendard', sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText(number, driver.x, y + carL * 0.78);
+  ctx.fillText(number, driver.x + curveShift, y + carL * 0.78);
   ctx.restore();
 }
 
@@ -419,6 +570,7 @@ function showFinishBanner() {
     )
     .join('');
   finishSummary.innerHTML = `<strong class="finish-title">완주 순위</strong>${ordered}`;
+  if (countdownDisplay) countdownDisplay.classList.add('hidden');
 }
 
 function finalizeFinishOrder() {
@@ -447,7 +599,7 @@ function gameLoop(timestamp) {
 function initGame() {
   if (!ensureElements()) return;
   initializePlayers();
-  raceState = { finished: false, finishOrder: [], startTime: null, lastTimestamp: 0 };
+  raceState = createInitialRaceState();
   bindEvents();
   resetRace();
   requestAnimationFrame(gameLoop);
