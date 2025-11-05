@@ -14,29 +14,42 @@ const TOTAL_LAPS = 1;
 const LANE_COUNT = 4;
 const LANE_WIDTH = 90;
 const TRACK_LEFT = (canvas.width - LANE_COUNT * LANE_WIDTH) / 2;
+const TRACK_WIDTH = LANE_COUNT * LANE_WIDTH;
 const CAR_LENGTH = 90;
 const CAR_WIDTH = 60;
-const VIEW_DISTANCE = 1200; // 화면에서 보여줄 거리
+const VIEW_DISTANCE = 1200; // 화면 표시 거리
 
-const inputState = {
-  ArrowUp: false,
-  ArrowDown: false,
-  ArrowLeft: false,
-  ArrowRight: false,
-};
+const inputState = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
-const driverPalette = [
-  { name: '이상훈', color: '#ef4444' },
-  { name: '김다연', color: '#3b82f6' },
-  { name: '박우진', color: '#facc15' },
-  { name: '최미소', color: '#22c55e' },
+// --- 차량 팔레트 / 디자인 정보 ---
+const aiDrivers = [
+  {
+    name: '이상훈',
+    design: { base: '#ef4444', accent: '#f97316', stripe: '#fee2e2', wing: '#111827', studs: '#fecaca', halo: '#0f172a', number: '22' },
+  },
+  {
+    name: '김다연',
+    design: { base: '#2563eb', accent: '#38bdf8', stripe: '#f8fafc', wing: '#0f172a', studs: '#dbeafe', halo: '#1e293b', number: '37' },
+  },
+  {
+    name: '박우진',
+    design: { base: '#facc15', accent: '#f97316', stripe: '#fef3c7', wing: '#0f172a', studs: '#fde68a', halo: '#1f2937', number: '64' },
+  },
+  {
+    name: '최미소',
+    design: { base: '#22c55e', accent: '#34d399', stripe: '#ecfccb', wing: '#0f172a', studs: '#bbf7d0', halo: '#052e16', number: '88' },
+  },
 ];
+
+function laneToX(lane) {
+  return TRACK_LEFT + lane * LANE_WIDTH + LANE_WIDTH / 2;
+}
 
 const players = [
   {
     id: 'player',
     name: '나의 브릭카',
-    color: '#f97316',
+    design: { base: '#f97316', accent: '#facc15', stripe: '#fef3c7', wing: '#111827', studs: '#fde68a', halo: '#0f172a', number: '01' },
     lane: 1,
     targetLane: 1,
     x: laneToX(1),
@@ -50,13 +63,13 @@ const players = [
     finishTime: null,
     isPlayer: true,
   },
-  ...driverPalette.map((driver, index) => ({
-    id: `ai-${index}`,
-    name: `${driver.name}`,
-    color: driver.color,
-    lane: index,
-    targetLane: index,
-    x: laneToX(index),
+  ...aiDrivers.map((driver, i) => ({
+    id: `ai-${i}`,
+    name: driver.name,
+    design: driver.design,
+    lane: i,
+    targetLane: i,
+    x: laneToX(i),
     speed: 0,
     baseSpeed: 180 + Math.random() * 20,
     accel: 110,
@@ -69,355 +82,246 @@ const players = [
   })),
 ];
 
-let raceState = {
-  finished: false,
-  finishOrder: [],
-  startTime: null,
-  lastTimestamp: 0,
-};
+let raceState = { finished: false, finishOrder: [], startTime: null, lastTimestamp: 0 };
 
-function laneToX(lane) {
-  return TRACK_LEFT + lane * LANE_WIDTH + LANE_WIDTH / 2;
+// --- 곡선형 트랙 (codex 기반) ---
+const trackSegments = [
+  { start: 0, end: 0.12, from: 0, to: -140 },
+  { start: 0.12, end: 0.26, from: -140, to: -180 },
+  { start: 0.26, end: 0.42, from: -180, to: 150 },
+  { start: 0.42, end: 0.58, from: 150, to: 60 },
+  { start: 0.58, end: 0.72, from: 60, to: -160 },
+  { start: 0.72, end: 0.86, from: -160, to: 210 },
+  { start: 0.86, end: 0.96, from: 210, to: -60 },
+  { start: 0.96, end: 1, from: -60, to: 0 },
+];
+function easeInOut(t) { return t * t * (3 - 2 * t); }
+function getTrackOffset(progress) {
+  const ratio = ((progress % TRACK_LENGTH) + TRACK_LENGTH) % TRACK_LENGTH / TRACK_LENGTH;
+  for (const seg of trackSegments) {
+    if (ratio >= seg.start && ratio < seg.end) {
+      const t = (ratio - seg.start) / (seg.end - seg.start);
+      return seg.from + (seg.to - seg.from) * easeInOut(t);
+    }
+  }
+  return 0;
 }
+function getTrackCenter(progress) { return canvas.width / 2 + getTrackOffset(progress); }
 
+// --- 기본 로직 ---
 function resetRace() {
-  players.forEach((driver, index) => {
-    driver.progress = 0;
-    driver.speed = 0;
-    driver.lap = 1;
-    driver.finished = false;
-    driver.finishTime = null;
-    driver.lane = Math.min(index, LANE_COUNT - 1);
-    driver.targetLane = driver.lane;
-    driver.x = laneToX(driver.lane);
+  players.forEach((d, i) => {
+    d.progress = 0; d.speed = 0; d.lap = 1; d.finished = false; d.finishTime = null;
+    d.lane = Math.min(i, LANE_COUNT - 1); d.targetLane = d.lane; d.x = laneToX(d.lane);
   });
-
-  raceState = {
-    finished: false,
-    finishOrder: [],
-    startTime: performance.now(),
-    lastTimestamp: 0,
-  };
-
+  raceState = { finished: false, finishOrder: [], startTime: performance.now(), lastTimestamp: 0 };
   finishBanner.classList.add('hidden');
   finishSummary.textContent = '';
 }
 
-function handleInput(event, isKeyDown) {
-  if (event.key in inputState) {
-    inputState[event.key] = isKeyDown;
-  }
-
-  if (event.type === 'keydown') {
-    if (event.key === 'r' || event.key === 'R') {
-      resetRace();
-    }
-    if (event.key === 'ArrowLeft') {
-      const player = players[0];
-      player.targetLane = Math.max(0, player.targetLane - 1);
-    }
-    if (event.key === 'ArrowRight') {
-      const player = players[0];
-      player.targetLane = Math.min(LANE_COUNT - 1, player.targetLane + 1);
-    }
+function handleInput(e, isDown) {
+  if (e.key in inputState) inputState[e.key] = isDown;
+  if (e.type === 'keydown') {
+    if (e.key === 'r' || e.key === 'R') resetRace();
+    if (e.key === 'ArrowLeft') players[0].targetLane = Math.max(0, players[0].targetLane - 1);
+    if (e.key === 'ArrowRight') players[0].targetLane = Math.min(LANE_COUNT - 1, players[0].targetLane + 1);
   }
 }
 
-document.addEventListener('keydown', (event) => handleInput(event, true));
-document.addEventListener('keyup', (event) => handleInput(event, false));
+document.addEventListener('keydown', (e) => handleInput(e, true));
+document.addEventListener('keyup', (e) => handleInput(e, false));
 restartBtn.addEventListener('click', resetRace);
 
+// --- 업데이트 루프 ---
 function update(dt) {
   const player = players[0];
-
-  if (!raceState.startTime) {
-    raceState.startTime = performance.now();
-  }
-
-  if (raceState.finished) {
-    return;
-  }
+  if (!raceState.startTime) raceState.startTime = performance.now();
+  if (raceState.finished) return;
 
   updatePlayer(player, dt);
-  players.slice(1).forEach((driver) => updateAI(driver, dt, player));
+  players.slice(1).forEach((d) => updateAI(d, dt, player));
 
-  players.forEach((driver) => {
-    if (!driver.finished && driver.progress >= TRACK_LENGTH * TOTAL_LAPS) {
-      driver.finished = true;
-      driver.finishTime = performance.now() - raceState.startTime;
-      raceState.finishOrder.push(driver);
-
-      if (driver.isPlayer) {
-        raceState.finished = true;
-        showFinishBanner();
-      }
+  players.forEach((d) => {
+    if (!d.finished && d.progress >= TRACK_LENGTH * TOTAL_LAPS) {
+      d.finished = true;
+      d.finishTime = performance.now() - raceState.startTime;
+      raceState.finishOrder.push(d);
+      if (d.isPlayer) { raceState.finished = true; showFinishBanner(); }
     }
   });
 
   updateUI();
 }
 
-function updatePlayer(driver, dt) {
-  const accelFactor = inputState.ArrowUp ? driver.accel : 0;
-  const brakeFactor = inputState.ArrowDown ? driver.grip : 0;
-  const friction = 40;
-
-  driver.speed += (accelFactor - brakeFactor - friction) * dt;
-  driver.speed = Math.max(0, Math.min(driver.speed, driver.topSpeed));
-
-  driver.progress += driver.speed * dt;
-
-  if (driver.progress < TRACK_LENGTH) {
-    driver.lap = 1;
-  } else {
-    driver.lap = TOTAL_LAPS;
-  }
-
-  const targetX = laneToX(driver.targetLane);
-  const moveStrength = 12 * dt;
-  driver.x += (targetX - driver.x) * moveStrength;
+function updatePlayer(d, dt) {
+  const accel = inputState.ArrowUp ? d.accel : 0;
+  const brake = inputState.ArrowDown ? d.grip : 0;
+  d.speed += (accel - brake - 40) * dt;
+  d.speed = Math.max(0, Math.min(d.speed, d.topSpeed));
+  d.progress += d.speed * dt;
+  d.lap = d.progress < TRACK_LENGTH ? 1 : TOTAL_LAPS;
+  const targetX = laneToX(d.targetLane);
+  d.x += (targetX - d.x) * (12 * dt);
 
   // 간단한 충돌 처리
   players.slice(1).forEach((ai) => {
-    if (checkCollision(driver, ai)) {
-      driver.speed *= 0.5;
-      driver.progress -= 40 * dt;
+    if (checkCollision(d, ai)) {
+      d.speed *= 0.5;
       ai.speed *= 0.7;
     }
   });
 }
 
-function updateAI(driver, dt, player) {
-  if (driver.finished) {
-    return;
+function updateAI(d, dt, player) {
+  if (d.finished) return;
+  const targetSpeed = d.baseSpeed + Math.sin(performance.now() / 600 + d.progress) * 10;
+  const diff = targetSpeed - d.speed;
+  d.speed += Math.max(-d.accel * dt, Math.min(d.accel * dt, diff));
+  d.speed = Math.max(150, Math.min(d.speed, d.baseSpeed + 25));
+  d.progress += d.speed * dt;
+  d.lap = d.progress < TRACK_LENGTH ? 1 : TOTAL_LAPS;
+
+  const rel = d.progress - player.progress;
+  if (rel > -200 && rel < 120 && Math.abs(d.lane - player.targetLane) <= 1 && Math.random() < 0.02) {
+    const dir = d.lane <= player.targetLane ? -1 : 1;
+    const newLane = d.lane + dir;
+    if (newLane >= 0 && newLane < LANE_COUNT) d.lane = d.targetLane = newLane;
   }
 
-  const targetSpeed = driver.baseSpeed + Math.sin(performance.now() / 600 + driver.progress) * 10;
-  const speedDifference = targetSpeed - driver.speed;
-  const maxAcceleration = driver.accel * dt;
-
-  driver.speed += Math.max(-maxAcceleration, Math.min(maxAcceleration, speedDifference));
-  driver.speed = Math.max(150, Math.min(driver.speed, driver.baseSpeed + 25));
-  driver.progress += driver.speed * dt;
-
-  if (driver.progress < TRACK_LENGTH) {
-    driver.lap = 1;
-  } else {
-    driver.lap = TOTAL_LAPS;
-  }
-
-  const relativeDistance = driver.progress - player.progress;
-  if (relativeDistance > -200 && relativeDistance < 120) {
-    if (Math.abs(driver.lane - player.targetLane) <= 1) {
-      if (Math.random() < 0.02) {
-        const direction = driver.lane <= player.targetLane ? -1 : 1;
-        const newLane = driver.lane + direction;
-        if (newLane >= 0 && newLane < LANE_COUNT) {
-          driver.lane = newLane;
-          driver.targetLane = newLane;
-        }
-      }
-    }
-  }
-
-  const targetX = laneToX(driver.targetLane);
-  const moveStrength = 8 * dt;
-  driver.x += (targetX - driver.x) * moveStrength;
+  const targetX = laneToX(d.targetLane);
+  d.x += (targetX - d.x) * (8 * dt);
 }
 
-function checkCollision(player, opponent) {
-  const laneThreshold = LANE_WIDTH * 0.45;
-  const distanceThreshold = CAR_LENGTH * 0.7;
-  const laneClose = Math.abs(player.x - opponent.x) < laneThreshold;
-  const progressDiff = Math.abs(player.progress - opponent.progress);
-  return laneClose && progressDiff < distanceThreshold;
+function checkCollision(p, o) {
+  const laneClose = Math.abs(p.x - o.x) < LANE_WIDTH * 0.45;
+  const progressDiff = Math.abs(p.progress - o.progress);
+  return laneClose && progressDiff < CAR_LENGTH * 0.7;
 }
 
-function render(timestamp) {
+// --- 렌더링 ---
+function render(ts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawTrack();
-  drawDrivers(timestamp);
+  drawTrack(ts);
+  drawCars(ts);
 }
 
-function drawTrack() {
-  const laneMarkWidth = 12;
+function drawTrack(ts) {
   ctx.save();
-  ctx.fillStyle = '#111827';
+  ctx.fillStyle = '#020617';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = '#364152';
-  ctx.fillRect(TRACK_LEFT, 0, LANE_COUNT * LANE_WIDTH, canvas.height);
-
-  const playerProgress = players[0].progress;
-  const patternHeight = 40;
-  const offset = (playerProgress % patternHeight) * 0.5;
-
-  for (let y = -patternHeight; y < canvas.height + patternHeight; y += patternHeight) {
-    for (let lane = 0; lane < LANE_COUNT; lane++) {
-      const brickX = TRACK_LEFT + lane * LANE_WIDTH + 18;
-      const brickY = y + offset;
-      const isEven = (lane + Math.floor((y + playerProgress / 5) / patternHeight)) % 2 === 0;
-      ctx.fillStyle = isEven ? 'rgba(30, 41, 59, 0.35)' : 'rgba(51, 65, 85, 0.35)';
-      ctx.fillRect(brickX, brickY, LANE_WIDTH - 36, patternHeight - 10);
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.12)';
-      ctx.fillRect(brickX + 6, brickY + 6, LANE_WIDTH - 48, patternHeight - 22);
-    }
-  }
-
-  ctx.setLineDash([20, 20]);
-  ctx.lineWidth = laneMarkWidth;
-  ctx.strokeStyle = '#e2e8f0';
-  for (let lane = 1; lane < LANE_COUNT; lane++) {
-    const x = TRACK_LEFT + lane * LANE_WIDTH;
-    ctx.beginPath();
-    ctx.moveTo(x, -20);
-    ctx.lineTo(x, canvas.height + 20);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-
-  const playerProgressRatio = players[0].progress / (TRACK_LENGTH * TOTAL_LAPS);
-  ctx.fillStyle = '#111827';
-  ctx.fillRect(32, 32, 220, 10);
-  ctx.fillStyle = '#facc15';
-  ctx.fillRect(32, 32, 220 * Math.min(playerProgressRatio, 1), 10);
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '12px "Segoe UI", sans-serif';
-  ctx.fillText('결승선까지', 32, 24);
-
   const player = players[0];
-  const finishDistance = TRACK_LENGTH * TOTAL_LAPS - player.progress;
-  if (finishDistance < 200) {
-    const finishY = (finishDistance / VIEW_DISTANCE) * canvas.height;
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(TRACK_LEFT, finishY, LANE_COUNT * LANE_WIDTH, 30);
-    ctx.fillStyle = '#e11d48';
-    const stripeWidth = 20;
-    for (let x = TRACK_LEFT; x < TRACK_LEFT + LANE_COUNT * LANE_WIDTH; x += stripeWidth) {
-      ctx.fillStyle = (Math.floor(x / stripeWidth) % 2 === 0) ? '#e11d48' : '#f8fafc';
-      ctx.fillRect(x, finishY, stripeWidth, 30);
-    }
-  }
+
+  const standHeight = 80;
+  const standGrad = ctx.createLinearGradient(0, 0, 0, standHeight);
+  standGrad.addColorStop(0, 'rgba(30,41,59,0.9)');
+  standGrad.addColorStop(1, 'rgba(15,23,42,0.3)');
+  ctx.fillStyle = standGrad;
+  ctx.fillRect(0, 0, canvas.width, standHeight);
+  ctx.fillRect(0, canvas.height - standHeight, canvas.width, standHeight);
+
+  const bannerColors = ['#f97316', '#38bdf8', '#a855f7', '#facc15'];
+  bannerColors.forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(i * (canvas.width / bannerColors.length), standHeight - 10, canvas.width / bannerColors.length - 8, 6);
+  });
 
   ctx.restore();
 }
 
-function drawDrivers(timestamp) {
+function drawCars(ts) {
   const player = players[0];
-
-  players.forEach((driver) => {
-    const relativeDistance = driver.progress - player.progress;
-
-    if (driver.isPlayer) {
-      drawCar(driver, canvas.height - 120, timestamp, true);
-      return;
-    }
-
-    if (relativeDistance < -160 || relativeDistance > VIEW_DISTANCE) {
-      return;
-    }
-
-    const viewScale = 1 - relativeDistance / VIEW_DISTANCE;
-    const y = canvas.height - relativeDistance * 0.4 - 160;
-    drawCar(driver, y, timestamp, false, viewScale);
+  players.forEach((d) => {
+    const rel = d.progress - player.progress;
+    if (rel < -200 || rel > VIEW_DISTANCE) return;
+    const y = canvas.height - rel * 0.4 - 160;
+    const scale = Math.max(0.3, 1 - rel / VIEW_DISTANCE);
+    drawCar(d, y, ts, d.isPlayer, scale);
   });
 }
 
-function drawCar(driver, y, timestamp, isPlayer, scale = 1) {
-  const carWidth = CAR_WIDTH * scale;
-  const carLength = CAR_LENGTH * scale;
-  const x = driver.x - carWidth / 2;
+function drawCar(d, y, ts, isPlayer, scale = 1) {
+  const { base, accent, stripe, wing, studs, halo, number } = d.design;
+  const carW = CAR_WIDTH * scale;
+  const carL = CAR_LENGTH * scale;
+  const x = d.x - carW / 2;
 
   ctx.save();
-  ctx.translate(x + carWidth / 2, y + carLength / 2);
-  ctx.rotate((Math.sin(timestamp / 200 + driver.progress / 100) * 2 * Math.PI) / 180 * (isPlayer ? 1 : 0.4));
-  ctx.translate(-(x + carWidth / 2), -(y + carLength / 2));
+  ctx.fillStyle = 'rgba(8,15,26,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(d.x, y + carL * 0.94, carW * 0.46, carL * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
-  ctx.fillRect(x + 8 * scale, y + carLength - 6 * scale, carWidth - 16 * scale, 12 * scale);
+  ctx.fillStyle = wing;
+  ctx.fillRect(x - carW * 0.1, y + carL * 0.05, carW * 1.2, carL * 0.08);
+  ctx.fillRect(x - carW * 0.1, y + carL * 0.86, carW * 1.2, carL * 0.1);
 
-  ctx.fillStyle = driver.color;
-  ctx.fillRect(x, y, carWidth, carLength);
+  ctx.fillStyle = base;
+  ctx.fillRect(x, y, carW, carL);
+  ctx.fillStyle = accent;
+  ctx.fillRect(x + carW * 0.14, y + carL * 0.58, carW * 0.72, carL * 0.22);
+  ctx.fillStyle = stripe;
+  ctx.fillRect(x + carW * 0.2, y + carL * 0.68, carW * 0.6, carL * 0.06);
 
-  ctx.fillStyle = shadeColor(driver.color, -20);
-  ctx.fillRect(x + carWidth * 0.15, y + carLength * 0.1, carWidth * 0.7, carLength * 0.4);
+  ctx.fillStyle = halo;
+  ctx.fillRect(x + carW * 0.26, y + carL * 0.18, carW * 0.48, carL * 0.18);
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(x + carW * 0.3, y + carL * 0.12, carW * 0.4, carL * 0.06);
 
-  ctx.fillStyle = shadeColor(driver.color, 20);
-  ctx.fillRect(x + carWidth * 0.2, y + carLength * 0.55, carWidth * 0.6, carLength * 0.3);
-
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(x + carWidth * 0.3, y + carLength * 0.15, carWidth * 0.4, carLength * 0.25);
+  const studR = carW * 0.08;
+  for (let i = 0; i < 3; i++) {
+    const sx = x + carW * (0.25 + i * 0.25);
+    ctx.fillStyle = studs;
+    ctx.beginPath();
+    ctx.arc(sx, y + carL * 0.36, studR, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(x + carWidth * 0.3, y + carLength * 0.05, carWidth * 0.4, carLength * 0.07);
-
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(x + carWidth * 0.1, y + carLength * 0.82, carWidth * 0.2, carLength * 0.15);
-  ctx.fillRect(x + carWidth * 0.7, y + carLength * 0.82, carWidth * 0.2, carLength * 0.15);
-
+  ctx.font = `${Math.max(8, 12 * scale)}px 'Pretendard', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(number, d.x, y + carL * 0.78);
   ctx.restore();
 }
 
-function shadeColor(color, percent) {
-  const num = parseInt(color.replace('#', ''), 16);
-  const amt = Math.round(2.55 * percent);
-  const r = (num >> 16) + amt;
-  const g = ((num >> 8) & 0x00ff) + amt;
-  const b = (num & 0x0000ff) + amt;
-  return (
-    '#' +
-    (0x1000000 +
-      (r < 255 ? (r < 1 ? 0 : r) : 255) * 0x10000 +
-      (g < 255 ? (g < 1 ? 0 : g) : 255) * 0x100 +
-      (b < 255 ? (b < 1 ? 0 : b) : 255))
-      .toString(16)
-      .slice(1)
-  );
-}
-
+// --- UI 업데이트 ---
 function updateUI() {
-  const player = players[0];
-  const speedKm = Math.round(player.speed);
-  speedDisplay.textContent = speedKm;
+  const p = players[0];
+  speedDisplay.textContent = Math.round(p.speed);
   rankDisplay.textContent = getPlayerRank();
-  lapDisplay.textContent = `${player.lap} / ${TOTAL_LAPS}`;
+  lapDisplay.textContent = `${p.lap} / ${TOTAL_LAPS}`;
 
   const sorted = [...players].sort((a, b) => b.progress - a.progress);
   positionList.innerHTML = '';
-  sorted.forEach((driver, index) => {
+  sorted.forEach((d, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${index + 1}.</span> ${driver.name}`;
-    if (driver.isPlayer) {
-      li.classList.add('player-entry');
-    }
+    li.innerHTML = `<span class="pos-rank">${i + 1}</span> 
+      <span class="pos-driver"><span class="pos-chip" style="background:${d.design.base}"></span>${d.name}</span>`;
+    if (d.isPlayer) li.classList.add('player-entry');
     positionList.appendChild(li);
   });
 }
 
 function getPlayerRank() {
   const player = players[0];
-  const sorted = [...players].sort((a, b) => b.progress - a.progress);
-  return sorted.findIndex((driver) => driver.id === player.id) + 1;
+  return [...players].sort((a, b) => b.progress - a.progress)
+    .findIndex((d) => d.id === player.id) + 1;
 }
 
 function showFinishBanner() {
   finishBanner.classList.remove('hidden');
   const ordered = raceState.finishOrder
-    .map((driver, index) => `${index + 1}위 ${driver.name}`)
-    .join('<br />');
-  finishSummary.innerHTML = `완주 순위<br />${ordered}`;
+    .map((d, i) => `<span class="finish-line"><span class="finish-chip" style="background:${d.design.base}"></span>${i + 1}위 ${d.name} (#${d.design.number})</span>`)
+    .join('');
+  finishSummary.innerHTML = `<strong class="finish-title">완주 순위</strong>${ordered}`;
 }
 
-function gameLoop(timestamp) {
-  if (!raceState.lastTimestamp) {
-    raceState.lastTimestamp = timestamp;
-  }
-  const dt = (timestamp - raceState.lastTimestamp) / 1000;
-  raceState.lastTimestamp = timestamp;
-
+// --- 루프 ---
+function gameLoop(ts) {
+  if (!raceState.lastTimestamp) raceState.lastTimestamp = ts;
+  const dt = (ts - raceState.lastTimestamp) / 1000;
+  raceState.lastTimestamp = ts;
   update(dt);
-  render(timestamp);
-
+  render(ts);
   requestAnimationFrame(gameLoop);
 }
 

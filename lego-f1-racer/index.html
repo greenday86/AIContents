@@ -26,11 +26,21 @@
             </div>
             <div class="hud">
                 <h2>계기판</h2>
-                <div class="hud-item">속도: <span id="speedDisplay">0</span> km/h</div>
-                <div class="hud-item">라운드: <span id="lapDisplay">1 / 1</span></div>
-                <div class="hud-item">포지션: <span id="rankDisplay">1</span> 위</div>
+                <div class="hud-item">
+                    <span class="label">속도</span>
+                    <span class="value"><span id="speedDisplay">0</span><small>km/h</small></span>
+                </div>
+                <div class="hud-item">
+                    <span class="label">라운드</span>
+                    <span class="value" id="lapDisplay">1 / 1</span>
+                </div>
+                <div class="hud-item">
+                    <span class="label">포지션</span>
+                    <span class="value"><span id="rankDisplay">1</span><small>위</small></span>
+                </div>
             </div>
         </section>
+
         <section class="stage">
             <canvas id="raceCanvas" width="800" height="600"></canvas>
             <div id="finishBanner" class="finish-banner hidden">

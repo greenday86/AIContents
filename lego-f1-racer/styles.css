@@ -17,11 +17,25 @@
 
 body {
   font-family: 'Segoe UI', 'Pretendard', sans-serif;
-  background: linear-gradient(135deg, #111827 0%, #1e3a8a 100%);
+  background: radial-gradient(circle at top left, #1f2937 0%, #0f172a 45%, #020617 100%);
   color: var(--light);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.12) 18%, transparent 22%),
+    radial-gradient(rgba(30, 58, 138, 0.18) 12%, transparent 18%);
+  background-size: 48px 48px, 64px 64px;
+  mix-blend-mode: screen;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .layout {
@@ -29,19 +43,31 @@ body {
   display: flex;
   max-width: 1200px;
   margin: 2rem auto;
-  background: rgba(15, 23, 42, 0.85);
-  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.78));
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 24px 60px rgba(8, 16, 28, 0.55);
+  position: relative;
+}
+
+.layout::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  pointer-events: none;
 }
 
 .sidebar {
   width: 320px;
   padding: 2rem 1.5rem;
-  background: rgba(15, 23, 42, 0.95);
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.95), rgba(17, 24, 39, 0.78));
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .logo {
@@ -49,7 +75,18 @@ body {
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--lego-yellow);
-  text-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+  text-shadow: 0 5px 20px rgba(251, 191, 36, 0.45);
+  position: relative;
+}
+
+.logo::after {
+  content: '브릭 서킷 2024';
+  display: inline-block;
+  font-size: 0.7rem;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.6);
+  margin-left: 0.4rem;
 }
 
 .race-info h2,
@@ -66,36 +103,64 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding-left: 0.5rem;
+  padding-left: 0.25rem;
 }
 
 .position-list li {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 42px 1fr;
   align-items: center;
-  background: rgba(30, 64, 175, 0.35);
-  border-left: 4px solid var(--lego-blue);
-  border-radius: 12px;
-  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(59, 130, 246, 0.08));
+  border-radius: 14px;
+  padding: 0.75rem 0.9rem;
   font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.15);
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.18);
 }
 
 .position-list li.player-entry {
-  border-left-color: var(--lego-yellow);
-  background: rgba(251, 191, 36, 0.25);
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.3);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.35), rgba(234, 179, 8, 0.15));
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25);
 }
 
-.position-list li span {
+.position-list .pos-rank {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--light);
+  text-align: center;
+}
+
+.position-list .pos-driver {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   font-size: 0.9rem;
-  color: var(--lego-yellow);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.position-list .pos-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.55);
 }
 
 .controls ul {
   list-style: none;
   display: grid;
   gap: 0.5rem;
+}
+
+.controls li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(30, 41, 59, 0.6);
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(100, 116, 139, 0.18);
 }
 
 .controls li strong {
@@ -112,10 +177,32 @@ body {
 
 .hud-item {
   padding: 0.8rem 1rem;
-  background: rgba(22, 163, 74, 0.3);
-  border-left: 4px solid var(--lego-green);
-  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.28), rgba(16, 185, 129, 0.12));
+  border-radius: 12px;
   font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid rgba(134, 239, 172, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.18);
+}
+
+.hud-item span.label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.hud-item span.value {
+  font-size: 1.1rem;
+  color: #ecfccb;
+}
+
+.hud-item span.value small {
+  font-size: 0.7rem;
+  margin-left: 0.35rem;
+  color: rgba(226, 232, 240, 0.6);
 }
 
 .stage {
@@ -124,14 +211,14 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: rgba(15, 23, 42, 0.75);
+  background: radial-gradient(circle at top, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.92));
 }
 
 #raceCanvas {
-  border-radius: 16px;
-  border: 12px solid rgba(15, 23, 42, 0.9);
+  border-radius: 20px;
+  border: 14px solid rgba(15, 23, 42, 0.92);
   background: var(--track);
-  box-shadow: inset 0 0 40px rgba(15, 23, 42, 0.7);
+  box-shadow: inset 0 0 40px rgba(15, 23, 42, 0.7), 0 20px 50px rgba(2, 6, 23, 0.55);
 }
 
 .finish-banner {
@@ -139,7 +226,7 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(15, 23, 42, 0.95);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.88));
   padding: 2rem 3rem;
   border-radius: 18px;
   text-align: center;
