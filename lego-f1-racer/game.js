@@ -9,6 +9,12 @@ const BASE_FRICTION = 40;
 const COUNTDOWN_DURATION = 3;
 const ROAD_SHOULDER = 110;
 const TRACK_SLICE_STEP = 45;
+const BOOST_MAX = 100;
+const BOOST_CHARGE_PER_STUD = 25;
+const BOOST_DURATION = 2.5;
+const BOOST_SPEED_MULTIPLIER = 1.35;
+const HAZARD_SLOW_FACTOR = 0.55;
+const HAZARD_PENALTY_DURATION = 1.8;
 
 let canvas;
 let ctx;
@@ -20,9 +26,64 @@ let finishBanner;
 let finishSummary;
 let restartBtn;
 let countdownDisplay;
+let studCountDisplay;
+let boostMeter;
+let boostFill;
+let boostPercent;
+let momentAnnouncer;
 let TRACK_LEFT = 0;
 
 const inputState = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+const collectibles = [];
+const hazards = [];
+
+function setupTrackEvents() {
+  collectibles.length = 0;
+  hazards.length = 0;
+
+  const studCount = 12;
+  for (let i = 0; i < studCount; i += 1) {
+    const progress = 240 + i * 260;
+    const lane = i % LANE_COUNT;
+    collectibles.push({
+      id: `stud-${i}`,
+      progress,
+      lane,
+      collected: false,
+    });
+  }
+
+  hazards.push(
+    {
+      id: 'hazard-1',
+      progress: 940,
+      lane: 2,
+      active: true,
+      slowFactor: 0.5,
+      penalty: HAZARD_PENALTY_DURATION,
+      message: '피트월 오일! 차가 미끄러집니다!',
+    },
+    {
+      id: 'hazard-2',
+      progress: 1680,
+      lane: 0,
+      active: true,
+      slowFactor: 0.58,
+      penalty: HAZARD_PENALTY_DURATION + 0.4,
+      message: '커브 바깥 모래를 밟았어요!',
+    },
+    {
+      id: 'hazard-3',
+      progress: 2460,
+      lane: 3,
+      active: true,
+      slowFactor: 0.6,
+      penalty: HAZARD_PENALTY_DURATION + 0.2,
+      message: '레고 브릭 파편이 튀었습니다! 속도가 떨어집니다.',
+    }
+  );
+}
 
 // --- 차량 팔레트 / 디자인 정보 ---
 const aiDrivers = [
@@ -87,10 +148,18 @@ function createInitialRaceState() {
     countdownActive: true,
     countdown: COUNTDOWN_DURATION,
     goSignalTime: 0,
+    boostMeter: 0,
+    currentRivalId: null,
+    rivalDelta: null,
+    rivalAnnounceCooldown: 0,
+    momentTimer: 0,
+    momentMessage: '',
+    momentTone: 'info',
   };
 }
 
 let raceState = createInitialRaceState();
+setupTrackEvents();
 
 const trackSegments = [
   { start: 0, end: 0.12, from: 0, to: -140 },
@@ -150,6 +219,10 @@ function initializePlayers() {
     finished: false,
     finishTime: null,
     isPlayer: true,
+    studs: 0,
+    boostActive: false,
+    boostTimer: 0,
+    hazardSlowTimer: 0,
   });
 
   aiDrivers.forEach((driver, i) => {
@@ -184,6 +257,11 @@ function ensureElements() {
   finishSummary = document.getElementById('finishSummary');
   restartBtn = document.getElementById('restartBtn');
   countdownDisplay = document.getElementById('countdownDisplay');
+  studCountDisplay = document.getElementById('studCount');
+  boostMeter = document.getElementById('boostMeter');
+  boostFill = document.getElementById('boostFill');
+  boostPercent = document.getElementById('boostPercent');
+  momentAnnouncer = document.getElementById('momentAnnouncer');
 
   if (!canvas) {
     console.error('raceCanvas 요소를 찾을 수 없습니다. HTML 구조를 확인하세요.');
@@ -196,7 +274,18 @@ function ensureElements() {
     return false;
   }
 
-  const requiredElements = [speedDisplay, lapDisplay, rankDisplay, positionList, finishBanner, finishSummary];
+  const requiredElements = [
+    speedDisplay,
+    lapDisplay,
+    rankDisplay,
+    positionList,
+    finishBanner,
+    finishSummary,
+    studCountDisplay,
+    boostMeter,
+    boostFill,
+    boostPercent,
+  ];
   if (requiredElements.some((el) => !el)) {
     console.error('UI 요소를 찾을 수 없습니다. HTML id를 확인하세요.');
     return false;
@@ -226,12 +315,31 @@ function bindEvents() {
 }
 
 function handleInput(e, isDown) {
-  if (e.key in inputState) inputState[e.key] = isDown;
+  if (e.key in inputState) {
+    inputState[e.key] = isDown;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+  }
   if (e.type === 'keydown') {
     if (e.key === 'r' || e.key === 'R') resetRace();
     if (e.key === 'ArrowLeft') players[0].targetLane = Math.max(0, players[0].targetLane - 1);
     if (e.key === 'ArrowRight') players[0].targetLane = Math.min(LANE_COUNT - 1, players[0].targetLane + 1);
+    if (e.code === 'Space') {
+      e.preventDefault();
+      tryActivateBoost();
+    }
   }
+}
+
+function tryActivateBoost() {
+  const player = players[0];
+  if (!player || raceState.countdownActive || raceState.finished) return;
+  if (player.boostActive || raceState.boostMeter < BOOST_MAX) return;
+  raceState.boostMeter = 0;
+  player.boostActive = true;
+  player.boostTimer = BOOST_DURATION;
+  player.hazardSlowTimer = 0;
+  player.speed = Math.max(player.speed, player.topSpeed * 0.78);
+  triggerMoment('터보 발동! 스피드 온!', 'boost');
 }
 
 function resetRace() {
@@ -244,10 +352,26 @@ function resetRace() {
     driver.lane = Math.min(index, LANE_COUNT - 1);
     driver.targetLane = driver.lane;
     driver.x = laneToX(driver.lane);
+    if (driver.isPlayer) {
+      driver.studs = 0;
+      driver.boostActive = false;
+      driver.boostTimer = 0;
+      driver.hazardSlowTimer = 0;
+    }
   });
   raceState = createInitialRaceState();
+  collectibles.forEach((item) => {
+    item.collected = false;
+  });
+  hazards.forEach((hazard) => {
+    hazard.active = true;
+  });
   finishBanner.classList.add('hidden');
   finishSummary.textContent = '';
+  if (momentAnnouncer) {
+    momentAnnouncer.textContent = '';
+    momentAnnouncer.className = 'moment-announcer hidden';
+  }
   if (countdownDisplay) {
     countdownDisplay.textContent = COUNTDOWN_DURATION.toString();
     countdownDisplay.classList.remove('hidden', 'go');
@@ -286,8 +410,23 @@ function handleCountdown(dt) {
 function handleInputFrame(player, dt) {
   const accel = inputState.ArrowUp ? player.accel : 0;
   const brake = inputState.ArrowDown ? player.grip : 0;
-  player.speed += (accel - brake - BASE_FRICTION) * dt;
-  player.speed = Math.max(0, Math.min(player.speed, player.topSpeed));
+  let friction = BASE_FRICTION;
+  if (player.boostActive) friction *= 0.55;
+  if (player.hazardSlowTimer > 0) friction *= 1.35;
+
+  let maxSpeedMultiplier = 1;
+  if (player.boostActive) {
+    maxSpeedMultiplier = BOOST_SPEED_MULTIPLIER;
+  } else if (player.hazardSlowTimer > 0) {
+    maxSpeedMultiplier = 0.82;
+  }
+
+  player.speed += (accel - brake - friction) * dt;
+  if (player.boostActive) {
+    player.speed += player.accel * 0.4 * dt;
+  }
+  const maxSpeed = player.topSpeed * maxSpeedMultiplier;
+  player.speed = Math.max(0, Math.min(player.speed, maxSpeed));
   player.progress += player.speed * dt;
   player.lap = player.progress < TRACK_LENGTH ? 1 : TOTAL_LAPS;
   const targetX = laneToX(player.targetLane);
@@ -332,36 +471,156 @@ function checkCollision(player, opponent) {
   return laneClose && progressDiff < CAR_LENGTH * 0.7;
 }
 
-function update(dt) {
-  if (handleCountdown(dt)) return;
+function processTrackEvents(player) {
+  checkCollectibles(player);
+  checkHazards(player);
+}
 
-  if (!raceState.startTime) raceState.startTime = performance.now();
-  if (raceState.finished) return;
-
-  const player = players[0];
-  handleInputFrame(player, dt);
-  players.slice(1).forEach((driver) => updateAI(driver, dt, player));
-
-  players.forEach((driver) => {
-    if (!driver.finished && driver.progress >= TRACK_LENGTH * TOTAL_LAPS) {
-      driver.finished = true;
-      driver.finishTime = performance.now() - raceState.startTime;
-      raceState.finishOrder.push(driver);
-      if (driver.isPlayer) {
-        raceState.finished = true;
-        finalizeFinishOrder();
-        showFinishBanner();
+function checkCollectibles(player) {
+  collectibles.forEach((item) => {
+    if (item.collected) return;
+    const distance = item.progress - player.progress;
+    if (distance < -100 || distance > 120) return;
+    const laneCenter = laneToX(item.lane);
+    if (Math.abs(player.x - laneCenter) < LANE_WIDTH * 0.45) {
+      item.collected = true;
+      player.studs += 1;
+      const before = raceState.boostMeter;
+      raceState.boostMeter = Math.min(BOOST_MAX, raceState.boostMeter + BOOST_CHARGE_PER_STUD);
+      triggerMoment(`브릭 수집! x${player.studs}`, 'collect');
+      if (before < BOOST_MAX && raceState.boostMeter >= BOOST_MAX) {
+        triggerMoment('터보 준비 완료! Space 키!', 'boost');
       }
     }
   });
+}
 
+function checkHazards(player) {
+  hazards.forEach((hazard) => {
+    if (!hazard.active) return;
+    const distance = hazard.progress - player.progress;
+    if (distance < -140 || distance > 110) return;
+    const laneCenter = laneToX(hazard.lane);
+    if (Math.abs(player.x - laneCenter) < LANE_WIDTH * 0.45) {
+      hazard.active = false;
+      const slowFactor = hazard.slowFactor !== undefined ? hazard.slowFactor : HAZARD_SLOW_FACTOR;
+      player.speed *= slowFactor;
+      const penalty = hazard.penalty !== undefined ? hazard.penalty : HAZARD_PENALTY_DURATION;
+      player.hazardSlowTimer = Math.max(player.hazardSlowTimer, penalty);
+      triggerMoment(hazard.message, 'hazard');
+    }
+  });
+}
+
+function updateBoostState(player, dt) {
+  if (player.boostActive) {
+    player.boostTimer = Math.max(0, player.boostTimer - dt);
+    if (player.boostTimer <= 0) {
+      player.boostActive = false;
+      player.boostTimer = 0;
+    }
+  }
+
+  if (player.hazardSlowTimer > 0) {
+    player.hazardSlowTimer = Math.max(0, player.hazardSlowTimer - dt);
+  }
+}
+
+function updateRivalHighlight(player, dt) {
+  raceState.rivalAnnounceCooldown = Math.max(0, raceState.rivalAnnounceCooldown - dt);
+  let closestDriver = null;
+  let closestDelta = Number.POSITIVE_INFINITY;
+
+  players.forEach((driver) => {
+    if (driver.id === player.id) return;
+    if (driver.finished && player.finished) return;
+    const delta = driver.progress - player.progress;
+    const absDelta = Math.abs(delta);
+    if (absDelta < closestDelta && absDelta < 220) {
+      closestDriver = driver;
+      closestDelta = absDelta;
+    }
+  });
+
+  if (closestDriver) {
+    raceState.currentRivalId = closestDriver.id;
+    raceState.rivalDelta = closestDriver.progress - player.progress;
+    if (Math.abs(raceState.rivalDelta) < 90 && raceState.rivalAnnounceCooldown === 0) {
+      const message =
+        raceState.rivalDelta >= 0
+          ? `${closestDriver.name} 추격 중!`
+          : `${closestDriver.name}이(가) 뒤에서 압박 중!`;
+      triggerMoment(message, 'rival');
+      raceState.rivalAnnounceCooldown = 3.2;
+    }
+  } else {
+    raceState.currentRivalId = null;
+    raceState.rivalDelta = null;
+  }
+}
+
+function triggerMoment(message, tone = 'collect') {
+  raceState.momentMessage = message;
+  raceState.momentTone = tone;
+  raceState.momentTimer = 2.6;
+  if (!momentAnnouncer) return;
+  momentAnnouncer.textContent = message;
+  momentAnnouncer.className = `moment-announcer ${tone}`;
+  momentAnnouncer.classList.remove('hidden');
+}
+
+function updateMomentDisplay(dt) {
+  if (raceState.momentTimer > 0) {
+    raceState.momentTimer = Math.max(0, raceState.momentTimer - dt);
+    if (raceState.momentTimer <= 0 && momentAnnouncer) {
+      momentAnnouncer.classList.add('hidden');
+    }
+  }
+}
+
+function update(dt) {
+  if (handleCountdown(dt)) {
+    updateMomentDisplay(dt);
+    return;
+  }
+
+  if (!raceState.startTime) raceState.startTime = performance.now();
+
+  const player = players[0];
+  if (!player) return;
+
+  if (!raceState.finished) {
+    handleInputFrame(player, dt);
+    players.slice(1).forEach((driver) => updateAI(driver, dt, player));
+    processTrackEvents(player);
+
+    players.forEach((driver) => {
+      if (!driver.finished && driver.progress >= TRACK_LENGTH * TOTAL_LAPS) {
+        driver.finished = true;
+        driver.finishTime = performance.now() - raceState.startTime;
+        raceState.finishOrder.push(driver);
+        if (driver.isPlayer) {
+          raceState.finished = true;
+          finalizeFinishOrder();
+          showFinishBanner();
+        }
+      }
+    });
+  }
+
+  updateBoostState(player, dt);
+  updateRivalHighlight(player, dt);
+  updateMomentDisplay(dt);
   updateUI();
 }
 
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawTrack();
+  drawHazards();
+  drawCollectibles();
   drawCars();
+  drawBoostEffects();
 }
 
 function drawTrack() {
@@ -478,6 +737,80 @@ function drawLaneMarkers(prevSlice, slice, roadWidth) {
   ctx.stroke();
 }
 
+function drawHazards() {
+  const player = players[0];
+  if (!player) return;
+  const baseOffset = getTrackOffset(player.progress);
+  hazards.forEach((hazard) => {
+    if (!hazard.active) return;
+    const relativeProgress = hazard.progress - player.progress;
+    if (relativeProgress < -200 || relativeProgress > VIEW_DISTANCE) return;
+    const y = canvas.height - relativeProgress * 0.4 - 160;
+    if (y < 0) return;
+    const scale = Math.max(0.3, 1 - relativeProgress / VIEW_DISTANCE);
+    const curveShift = (getTrackOffset(hazard.progress) - baseOffset) * scale * 0.9;
+    const laneX = laneToX(hazard.lane) + curveShift;
+    drawHazardPatch(laneX, y, scale);
+  });
+}
+
+function drawHazardPatch(x, y, scale) {
+  const patchW = LANE_WIDTH * 0.6 * scale;
+  const patchH = CAR_LENGTH * 0.45 * scale;
+  ctx.save();
+  ctx.translate(x, y);
+  const wobble = Math.sin(performance.now() / 320 + x * 0.02) * 0.3;
+  ctx.rotate(wobble);
+  const gradient = ctx.createRadialGradient(0, 0, patchW * 0.2, 0, 0, Math.max(patchW, patchH));
+  gradient.addColorStop(0, 'rgba(15, 23, 42, 0.35)');
+  gradient.addColorStop(1, 'rgba(248, 113, 113, 0.18)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, patchW, patchH, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, 3 * scale);
+  ctx.strokeStyle = 'rgba(248, 113, 113, 0.35)';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCollectibles() {
+  const player = players[0];
+  if (!player) return;
+  const baseOffset = getTrackOffset(player.progress);
+  collectibles.forEach((item) => {
+    if (item.collected) return;
+    const relativeProgress = item.progress - player.progress;
+    if (relativeProgress < -200 || relativeProgress > VIEW_DISTANCE) return;
+    const y = canvas.height - relativeProgress * 0.4 - 160;
+    if (y < 0) return;
+    const scale = Math.max(0.35, 1 - relativeProgress / VIEW_DISTANCE);
+    const curveShift = (getTrackOffset(item.progress) - baseOffset) * scale * 0.9;
+    const laneX = laneToX(item.lane) + curveShift;
+    drawStudCollectible(laneX, y, scale);
+  });
+}
+
+function drawStudCollectible(x, y, scale) {
+  const studRadius = 12 * scale;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(250, 204, 21, 0.95)';
+  ctx.beginPath();
+  ctx.arc(0, 0, studRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(253, 230, 138, 0.95)';
+  ctx.beginPath();
+  ctx.arc(0, -studRadius * 0.35, studRadius * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(161, 98, 7, 0.6)';
+  ctx.lineWidth = Math.max(1, 2 * scale);
+  ctx.beginPath();
+  ctx.arc(0, 0, studRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawCars() {
   const player = players[0];
   const baseOffset = getTrackOffset(player.progress);
@@ -496,11 +829,28 @@ function drawCar(driver, y, scale = 1, curveShift = 0) {
   const carW = CAR_WIDTH * scale;
   const carL = CAR_LENGTH * scale;
   const x = driver.x + curveShift - carW / 2;
+  const centerX = driver.x + curveShift;
+  const centerY = y + carL * 0.5;
+
+  if (driver.boostActive && driver.isPlayer) {
+    ctx.save();
+    const glowRadiusX = carW * 1.1;
+    const glowRadiusY = carL * 1.2;
+    const glow = ctx.createRadialGradient(centerX, centerY, carW * 0.1, centerX, centerY, glowRadiusX);
+    glow.addColorStop(0, 'rgba(34, 211, 238, 0.8)');
+    glow.addColorStop(1, 'rgba(14, 165, 233, 0)');
+    ctx.fillStyle = glow;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, glowRadiusX, glowRadiusY, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.fillStyle = 'rgba(8,15,26,0.45)';
   ctx.beginPath();
-  ctx.ellipse(driver.x + curveShift, y + carL * 0.94, carW * 0.46, carL * 0.18, 0, 0, Math.PI * 2);
+  ctx.ellipse(centerX, y + carL * 0.94, carW * 0.46, carL * 0.18, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = wing;
@@ -535,19 +885,54 @@ function drawCar(driver, y, scale = 1, curveShift = 0) {
   ctx.restore();
 }
 
+function drawBoostEffects() {
+  const player = players[0];
+  if (!player || !player.boostActive) return;
+  ctx.save();
+  const pulse = (Math.sin(performance.now() / 90) + 1) * 0.12 + 0.1;
+  ctx.globalAlpha = 0.15 + pulse * 0.25;
+  const overlay = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  overlay.addColorStop(0, 'rgba(56, 189, 248, 0.65)');
+  overlay.addColorStop(1, 'rgba(14, 165, 233, 0.35)');
+  ctx.fillStyle = overlay;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
 function updateUI() {
   const player = players[0];
   speedDisplay.textContent = Math.round(player.speed);
   rankDisplay.textContent = getPlayerRank();
   lapDisplay.textContent = `${player.lap} / ${TOTAL_LAPS}`;
+  if (studCountDisplay) studCountDisplay.textContent = player.studs;
+  if (boostFill && boostPercent) {
+    const percent = Math.round((raceState.boostMeter / BOOST_MAX) * 100);
+    boostFill.style.width = `${percent}%`;
+    boostFill.dataset.ready = percent >= 100 ? 'true' : 'false';
+    boostPercent.textContent = `${percent}%`;
+    if (boostMeter) boostMeter.classList.toggle('ready', percent >= 100);
+    boostPercent.classList.toggle('ready', percent >= 100);
+  }
 
   const sorted = [...players].sort((a, b) => b.progress - a.progress);
   positionList.innerHTML = '';
+  const rivalId = raceState.currentRivalId;
   sorted.forEach((driver, index) => {
     const li = document.createElement('li');
     li.innerHTML = `<span class="pos-rank">${index + 1}</span>
       <span class="pos-driver"><span class="pos-chip" style="background:${driver.design.base}"></span>${driver.name}</span>`;
     if (driver.isPlayer) li.classList.add('player-entry');
+    if (driver.id === rivalId) {
+      li.classList.add('rival-entry');
+      if (raceState.rivalDelta !== null) {
+        const gap = Math.max(1, Math.round(Math.abs(raceState.rivalDelta)));
+        const gapSpan = document.createElement('span');
+        gapSpan.className = 'pos-gap';
+        const prefix = raceState.rivalDelta >= 0 ? '+' : '-';
+        gapSpan.textContent = `${prefix}${gap}m`;
+        li.appendChild(gapSpan);
+      }
+    }
     positionList.appendChild(li);
   });
 }
@@ -571,6 +956,8 @@ function showFinishBanner() {
     .join('');
   finishSummary.innerHTML = `<strong class="finish-title">완주 순위</strong>${ordered}`;
   if (countdownDisplay) countdownDisplay.classList.add('hidden');
+  raceState.momentTimer = 0;
+  if (momentAnnouncer) momentAnnouncer.classList.add('hidden');
 }
 
 function finalizeFinishOrder() {
