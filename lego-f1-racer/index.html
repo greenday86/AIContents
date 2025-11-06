@@ -22,6 +22,7 @@
                     <li><strong>↓</strong> 감속</li>
                     <li><strong>← / →</strong> 좌우 이동</li>
                     <li><strong>R</strong> 레이스 리셋</li>
+                    <li><strong>Space</strong> 터보 사용 (게이지 가득 시)</li>
                 </ul>
             </div>
             <div class="hud">
@@ -38,12 +39,27 @@
                     <span class="label">포지션</span>
                     <span class="value"><span id="rankDisplay">1</span><small>위</small></span>
                 </div>
+                <div class="hud-item studs">
+                    <span class="label">수집한 브릭</span>
+                    <span class="value"><span id="studCount">0</span><small>개</small></span>
+                </div>
+                <div class="hud-item boost">
+                    <div class="boost-header">
+                        <span class="label">터보 게이지</span>
+                        <span class="boost-percent" id="boostPercent">0%</span>
+                    </div>
+                    <div class="boost-meter" id="boostMeter">
+                        <div class="boost-fill" id="boostFill"></div>
+                    </div>
+                    <p class="boost-tip">브릭을 모아 터보를 충전하고 Space 키로 폭발적인 가속을!</p>
+                </div>
             </div>
         </section>
 
         <section class="stage">
             <canvas id="raceCanvas" width="800" height="600"></canvas>
             <div id="countdownDisplay" class="countdown hidden">3</div>
+            <div id="momentAnnouncer" class="moment-announcer hidden"></div>
             <div id="finishBanner" class="finish-banner hidden">
                 <h2>체커플래그!</h2>
                 <p id="finishSummary"></p>
