@@ -1,0 +1,7 @@
+{
+  "name": "lego-f1-racer",
+  "compatibility_date": "2024-05-01",
+  "assets": {
+    "directory": "."
+  }
+}
